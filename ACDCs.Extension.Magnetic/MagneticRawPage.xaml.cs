@@ -6,9 +6,9 @@ using LiveChartsCore.SkiaSharpView.Painting.Effects;
 using SkiaSharp;
 using System.Collections.ObjectModel;
 
-namespace MagneticTool;
+namespace ACDCs.Extension.Magnetic;
 
-public partial class MainPage : ContentPage
+public partial class MagneticRawPage : ContentPage
 {
     private readonly LineSeries<FftInfo> _seriesFftX;
     private readonly LineSeries<FftInfo> _seriesFftY;
@@ -19,11 +19,12 @@ public partial class MainPage : ContentPage
     private readonly MagneticWorker _worker;
     private DateTime _lastUpdate = DateTime.Now;
 
-    public MainPage()
+    public MagneticRawPage()
     {
         InitializeComponent();
 
         _worker = new MagneticWorker();
+        FftSizePicker.SelectedIndex = 3;
 
         _seriesX = GetSeries(SKColors.Red);
         _seriesY = GetSeries(SKColors.Green);
@@ -39,12 +40,14 @@ public partial class MainPage : ContentPage
             new()
             {
                 Name = "Time",
+                NameTextSize= 30,
                 NamePaint = new SolidColorPaint(SKColors.White),
-
                 LabelsPaint = new SolidColorPaint(SKColors.White),
-                TextSize = 20,
-
-                SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray) { StrokeThickness = 2 }
+                TextSize = 30,
+                SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray)
+                {
+                    StrokeThickness = 2
+                }
             }
         };
 
@@ -52,12 +55,11 @@ public partial class MainPage : ContentPage
         {
             new()
             {
+                NameTextSize= 30,
                 Name = "Power (μT)",
                 NamePaint = new SolidColorPaint(SKColors.Yellow),
-
                 LabelsPaint = new SolidColorPaint(SKColors.Yellow),
-                TextSize = 20,
-
+                TextSize = 30,
                 SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray)
                 {
                     StrokeThickness = 2,
@@ -73,11 +75,10 @@ public partial class MainPage : ContentPage
             new()
             {
                 Name = "Frequency (hz)",
+                NameTextSize= 30,
                 NamePaint = new SolidColorPaint(SKColors.White),
-
                 LabelsPaint = new SolidColorPaint(SKColors.White),
-                TextSize = 20,
-
+                TextSize = 30,
                 SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray) { StrokeThickness = 2 }
             }
         };
@@ -87,11 +88,10 @@ public partial class MainPage : ContentPage
             new()
             {
                 Name = "Power (dbm)",
+                NameTextSize= 30,
                 NamePaint = new SolidColorPaint(SKColors.Yellow),
-
                 LabelsPaint = new SolidColorPaint(SKColors.Yellow),
-                TextSize = 20,
-
+                TextSize = 30,
                 SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray)
                 {
                     StrokeThickness = 2,
@@ -146,28 +146,37 @@ public partial class MainPage : ContentPage
         if (sender == SeriesXCheckBox)
         {
             _seriesX.IsVisible = e.Value;
+            _seriesFftX.IsVisible = e.Value;
         }
         else if (sender == SeriesYCheckBox)
         {
             _seriesY.IsVisible = e.Value;
+            _seriesFftY.IsVisible = e.Value;
         }
         else if (sender == SeriesZCheckBox)
         {
             _seriesZ.IsVisible = e.Value;
+            _seriesFftZ.IsVisible = e.Value;
         }
+    }
+
+    private void FFTSize_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        _worker.FftWindowSize = Convert.ToInt32(FftSizePicker.SelectedItem);
     }
 
     private async void Magnetometer_ReadingChanged(object sender, MagnetometerChangedEventArgs e)
     {
         await _worker.AddSample(e.Reading.MagneticField);
 
-        if (DateTime.Now.Ticks < _lastUpdate.Ticks + 2000000) return;
+        if (DateTime.Now.Ticks < _lastUpdate.Ticks + 2500000) return;
 
         await AddSample(_seriesX.Values, e.Reading.MagneticField.X);
         await AddSample(_seriesY.Values, e.Reading.MagneticField.Y);
         await AddSample(_seriesZ.Values, e.Reading.MagneticField.Z);
-        labelSampleCount.Text =
-            $"Samples:{_worker.SampleCount} ({_worker.SampleCacheCount}/{_worker.SampleBackupCount})";
+        labelSampleCount.Text = $"Tot:{_worker.SampleCount}";
+        labelSampleBuffer.Text = $"Buf:{_worker.SampleCacheCount}";
+        labelSampleRecord.Text = $"Rec:{_worker.SampleBackupCount}";
         labelRawX.Text = $"X:{e.Reading.MagneticField.X}";
         labelRawY.Text = $"Y:{e.Reading.MagneticField.Y}";
         labelRawZ.Text = $"Z:{e.Reading.MagneticField.Z}";

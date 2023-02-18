@@ -1,0 +1,61 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:maui="clr-namespace:LiveChartsCore.SkiaSharpView.Maui;assembly=LiveChartsCore.SkiaSharpView.Maui"
+             xmlns:fa="clr-namespace:UraniumUI.Icons.FontAwesome;assembly=UraniumUI.Icons.FontAwesome"
+             x:Class="ACDCs.Extension.Magnetic.MagneticRawPage">
+    <AbsoluteLayout>
+        <StackLayout Orientation="Vertical" AbsoluteLayout.LayoutBounds="0,0,70,1" AbsoluteLayout.LayoutFlags="HeightProportional">
+            <HorizontalStackLayout Margin="0,0,5,0">
+                <Switch Toggled="OnOffSwitch_Toggled" />
+                <Label FontFamily="FASolid" FontSize="20" Text="{x:Static fa:Solid.PowerOff}" HorizontalTextAlignment="Start" VerticalTextAlignment="Center"/>
+            </HorizontalStackLayout>
+            <HorizontalStackLayout Margin="0,0,5,0">
+                <Switch Toggled="RecordSwitch_Toggled" />
+                <Label FontFamily="FASolid" FontSize="20" Text="{x:Static fa:Solid.FloppyDisk}" HorizontalTextAlignment="Start" VerticalTextAlignment="Center" />
+            </HorizontalStackLayout>
+            <VerticalStackLayout Margin="0,0,5,0">
+                <Label x:Name="labelSampleCount" VerticalTextAlignment="Start" MaximumHeightRequest="20" FontSize="10" FontAutoScalingEnabled="True" HorizontalTextAlignment="Start" HorizontalOptions="Start"/>
+                <Label x:Name="labelSampleBuffer" VerticalTextAlignment="Start" MaximumHeightRequest="20" FontSize="10" FontAutoScalingEnabled="True" HorizontalTextAlignment="Start" HorizontalOptions="Start"/>
+                <Label x:Name="labelSampleRecord" VerticalTextAlignment="Start" MaximumHeightRequest="20" FontSize="10" FontAutoScalingEnabled="True" HorizontalTextAlignment="Start" HorizontalOptions="Start"/>
+                <Label x:Name="labelRawX" TextColor="Red" VerticalTextAlignment="Start" MaximumHeightRequest="20" FontSize="10" FontAutoScalingEnabled="True" HorizontalTextAlignment="Start" HorizontalOptions="Start"/>
+                <Label x:Name="labelRawY" TextColor="Green" VerticalTextAlignment="Start" MaximumHeightRequest="20" FontSize="10" FontAutoScalingEnabled="True" HorizontalTextAlignment="Start" HorizontalOptions="Start"/>
+                <Label x:Name="labelRawZ" TextColor="Blue" VerticalTextAlignment="Start" MaximumHeightRequest="20" FontSize="10" FontAutoScalingEnabled="True" HorizontalTextAlignment="Start" HorizontalOptions="Start"/>
+            </VerticalStackLayout>
+            <HorizontalStackLayout Margin="0,0,0,0">
+                <CheckBox Color="Red" WidthRequest="20" IsChecked="True" x:Name="SeriesXCheckBox" CheckedChanged="DataSeries_OnCheckedChanged" Margin="0,0,5,0" HorizontalOptions="Start" />
+                <Label Text="X" TextColor="Red" WidthRequest="60" VerticalTextAlignment="Center" HorizontalTextAlignment="Start" HorizontalOptions="Start" />
+            </HorizontalStackLayout>
+            <HorizontalStackLayout Margin="0,0,0,0">
+                <CheckBox Color="Green" WidthRequest="20" IsChecked="True" x:Name="SeriesYCheckBox"  CheckedChanged="DataSeries_OnCheckedChanged" Margin="0,0,5,0" HorizontalOptions="Start" />
+                <Label Text="Y" TextColor="Green"  WidthRequest="60" VerticalTextAlignment="Center" HorizontalTextAlignment="Start" HorizontalOptions="Start"/>
+            </HorizontalStackLayout>
+            <HorizontalStackLayout Margin="0,0,0,0">
+                <CheckBox Color="Blue" WidthRequest="20" IsChecked="True" x:Name="SeriesZCheckBox"  CheckedChanged="DataSeries_OnCheckedChanged" Margin="0,0,5,0" HorizontalOptions="Start"/>
+                <Label Text="Z" TextColor="Blue" WidthRequest="60" VerticalTextAlignment="Center" HorizontalTextAlignment="Start" HorizontalOptions="Start" />
+            </HorizontalStackLayout>
+            <VerticalStackLayout Margin="0,0,5,0">
+                <HorizontalStackLayout Margin="0">
+                    <Picker x:Name="FftSizePicker" SelectedItem="256" SelectedIndex="3" SelectedIndexChanged="FFTSize_SelectedIndexChanged" HorizontalOptions="Start">
+                        <Picker.Items>
+                            <x:String>2048</x:String>
+                            <x:String>1024</x:String>
+                            <x:String>512</x:String>
+                            <x:String>256</x:String>
+                            <x:String>128</x:String>
+                        </Picker.Items>
+                    </Picker>
+                    <Label Text="samples" VerticalTextAlignment="Center" HorizontalOptions="Start"></Label>
+
+                </HorizontalStackLayout>
+                <Label Text=" FFT Size"></Label>
+            </VerticalStackLayout>
+        </StackLayout>
+        <FlexLayout Direction="Row" Wrap="Wrap" AbsoluteLayout.LayoutBounds="70,0,0.9,0.8" AbsoluteLayout.LayoutFlags="SizeProportional">
+            <maui:CartesianChart x:Name="Chart" FlexLayout.Shrink="0.3"/>
+            <maui:CartesianChart x:Name="Fft" FlexLayout.Shrink="0.3"/>
+        </FlexLayout>
+    </AbsoluteLayout>
+
+</ContentPage>
+ 

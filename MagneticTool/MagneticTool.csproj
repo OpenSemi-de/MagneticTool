@@ -55,4 +55,8 @@
 		<PackageReference Include="UraniumUI.Icons.FontAwesome" Version="2.3.0" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <ProjectReference Include="..\ACDCs.Extension.Magnetic\ACDCs.Extension.Magnetic.csproj" />
+	</ItemGroup>
+
 </Project>

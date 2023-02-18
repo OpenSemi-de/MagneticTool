@@ -1,6 +1,6 @@
 ﻿using System.Numerics;
 
-namespace MagneticTool;
+namespace ACDCs.Extension.Magnetic;
 
 public class MagneticSample
 {

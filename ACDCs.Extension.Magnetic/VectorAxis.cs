@@ -1,4 +1,4 @@
-﻿namespace MagneticTool;
+﻿namespace ACDCs.Extension.Magnetic;
 
 public enum VectorAxis
 {
