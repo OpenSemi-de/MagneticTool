@@ -4,7 +4,7 @@
              xmlns:maui="clr-namespace:LiveChartsCore.SkiaSharpView.Maui;assembly=LiveChartsCore.SkiaSharpView.Maui"
              xmlns:fa="clr-namespace:UraniumUI.Icons.FontAwesome;assembly=UraniumUI.Icons.FontAwesome"
              x:Class="ACDCs.Extension.Magnetic.MagneticRawPage">
-    <AbsoluteLayout>
+    <Grid>
         <StackLayout Orientation="Vertical" AbsoluteLayout.LayoutBounds="0,0,70,1" AbsoluteLayout.LayoutFlags="HeightProportional">
             <HorizontalStackLayout Margin="0,0,5,0">
                 <Switch Toggled="OnOffSwitch_Toggled" />
@@ -51,11 +51,27 @@
                 <Label Text=" FFT Size"></Label>
             </VerticalStackLayout>
         </StackLayout>
-        <FlexLayout Direction="Row" Wrap="Wrap" AbsoluteLayout.LayoutBounds="70,0,0.9,0.8" AbsoluteLayout.LayoutFlags="SizeProportional">
+        <FlexLayout Direction="Row" Wrap="Wrap" AbsoluteLayout.LayoutBounds="70,0,0.8,0.9" AbsoluteLayout.LayoutFlags="SizeProportional">
             <maui:CartesianChart x:Name="Chart" FlexLayout.Shrink="0.3"/>
             <maui:CartesianChart x:Name="Fft" FlexLayout.Shrink="0.3"/>
         </FlexLayout>
-    </AbsoluteLayout>
+        <HorizontalStackLayout AbsoluteLayout.LayoutBounds="70,1,1,40" AbsoluteLayout.LayoutFlags="WidthProportional,YProportional">
+            <Label Text="Filter:"></Label>
+            <Picker x:Name="filterPicker" SelectedIndexChanged="filterPicker_SelectedIndexChanged">
+                <Picker.Items>
+                    <x:String>None</x:String>
+                    <x:String>Low-pass</x:String>
+                    <x:String>High-pass</x:String>
+                    <x:String>Band-pass</x:String>
+                    <x:String>Band-stop</x:String>
+                </Picker.Items>
+            </Picker>
+            <Label Text=" Freq. (hz):"></Label>
+            <Entry MaxLength="5" x:Name="frequencyEntry" TextChanged="frequencyEntry_TextChanged" />
+            <Label Text=" to Freq. (hz):"></Label>
+            <Entry MaxLength="5" x:Name="frequencyEntryMax" TextChanged="frequencyEntryMax_TextChanged" />
+        </HorizontalStackLayout>
+    </Grid>
 
 </ContentPage>
  

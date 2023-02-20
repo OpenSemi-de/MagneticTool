@@ -59,4 +59,6 @@
 	  <ProjectReference Include="..\ACDCs.Extension.Magnetic\ACDCs.Extension.Magnetic.csproj" />
 	</ItemGroup>
 
+	<ProjectExtensions><VisualStudio><UserProperties XamarinHotReloadDebuggerExceptionMagneticToolHideInfoBar="True" XamarinHotReloadGenericExceptionInfoBarMagneticToolHideInfoBar="True" /></VisualStudio></ProjectExtensions>
+
 </Project>

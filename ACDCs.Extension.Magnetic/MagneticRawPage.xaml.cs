@@ -1,15 +1,26 @@
 ﻿using LiveChartsCore;
 using LiveChartsCore.Kernel;
 using LiveChartsCore.SkiaSharpView;
+using LiveChartsCore.SkiaSharpView.Maui;
 using LiveChartsCore.SkiaSharpView.Painting;
 using LiveChartsCore.SkiaSharpView.Painting.Effects;
+using Microsoft.Maui.Layouts;
 using SkiaSharp;
 using System.Collections.ObjectModel;
+using UraniumUI.Icons.FontAwesome;
 
 namespace ACDCs.Extension.Magnetic;
 
-public partial class MagneticRawPage : ContentPage
+#pragma warning disable IDE1007
+
+using Sharp.UI;
+
+#pragma warning restore IDE1007
+
+public class MagneticRawPage : ContentPage
 {
+    private readonly Axis _axisFftX;
+    private readonly Axis _axisFftY;
     private readonly LineSeries<FftInfo> _seriesFftX;
     private readonly LineSeries<FftInfo> _seriesFftY;
     private readonly LineSeries<FftInfo> _seriesFftZ;
@@ -17,14 +28,23 @@ public partial class MagneticRawPage : ContentPage
     private readonly LineSeries<float> _seriesY;
     private readonly LineSeries<float> _seriesZ;
     private readonly MagneticWorker _worker;
+    private double _filterFrequency;
+    private double _filterFrequencyMax;
     private DateTime _lastUpdate = DateTime.Now;
+    private Grid _grid;
+    private Label labelSampleCount;
+    private Label labelSampleBuffer;
+    private Label labelSampleRecord;
+    private Label labelRawX;
+    private Label labelRawY;
+    private Label labelRawZ;
 
     public MagneticRawPage()
     {
-        InitializeComponent();
-
         _worker = new MagneticWorker();
-        FftSizePicker.SelectedIndex = 3;
+
+        InitializeComponent();
+        Content = _grid;
 
         _seriesX = GetSeries(SKColors.Red);
         _seriesY = GetSeries(SKColors.Green);
@@ -34,8 +54,8 @@ public partial class MagneticRawPage : ContentPage
         _seriesFftY = GetFftSeries(SKColors.Green);
         _seriesFftZ = GetFftSeries(SKColors.Blue);
 
-        Chart.Series = new ObservableCollection<ISeries> { _seriesX, _seriesY, _seriesZ };
-        Chart.XAxes = new List<Axis>
+        _chart.Series = new ObservableCollection<ISeries> { _seriesX, _seriesY, _seriesZ };
+        _chart.XAxes = new List<Axis>
         {
             new()
             {
@@ -51,7 +71,7 @@ public partial class MagneticRawPage : ContentPage
             }
         };
 
-        Chart.YAxes = new List<Axis>
+        _chart.YAxes = new List<Axis>
         {
             new()
             {
@@ -68,38 +88,228 @@ public partial class MagneticRawPage : ContentPage
             }
         };
 
-        Fft.Series = new ObservableCollection<ISeries> { _seriesFftX, _seriesFftY, _seriesFftZ };
+        _fft.Series = new ObservableCollection<ISeries> { _seriesFftX, _seriesFftY, _seriesFftZ };
 
-        Fft.XAxes = new List<Axis>
+        _axisFftX = new Axis
         {
-            new()
-            {
-                Name = "Frequency (hz)",
-                NameTextSize= 30,
-                NamePaint = new SolidColorPaint(SKColors.White),
-                LabelsPaint = new SolidColorPaint(SKColors.White),
-                TextSize = 30,
-                SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray) { StrokeThickness = 2 }
-            }
+            Name = "Frequency (hz)",
+            NameTextSize = 30,
+            NamePaint = new SolidColorPaint(SKColors.White),
+            LabelsPaint = new SolidColorPaint(SKColors.White),
+            TextSize = 30,
+            SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray) { StrokeThickness = 2 }
         };
 
-        Fft.YAxes = new List<Axis>
+        _fft.XAxes = new List<Axis>
         {
-            new()
+            _axisFftX
+        };
+
+        _axisFftY = new Axis
+        {
+            Name = "Power (dbm)",
+            NameTextSize = 30,
+            NamePaint = new SolidColorPaint(SKColors.Yellow),
+            LabelsPaint = new SolidColorPaint(SKColors.Yellow),
+            TextSize = 30,
+            SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray)
             {
-                Name = "Power (dbm)",
-                NameTextSize= 30,
-                NamePaint = new SolidColorPaint(SKColors.Yellow),
-                LabelsPaint = new SolidColorPaint(SKColors.Yellow),
-                TextSize = 30,
-                SeparatorsPaint = new SolidColorPaint(SKColors.LightSlateGray)
+                StrokeThickness = 2,
+                PathEffect = new DashEffect(new float[] { 3, 3 })
+            },
+            MinLimit = -100,
+        };
+
+        _fft.YAxes = new List<Axis>
+        {
+            _axisFftY
+        };
+    }
+
+    private void InitializeComponent()
+    {
+        RowDefinitionCollection rowDefinitions = new()
+        {
+            new RowDefinition(32),
+            new RowDefinition(),
+            new RowDefinition(40)
+        };
+
+        ColumnDefinitionCollection columnDefinitions = new()
+        {
+            new ColumnDefinition(70),
+            new ColumnDefinition()
+        };
+
+        _grid = new Grid()
+            .RowDefinitions(rowDefinitions)
+            .ColumnDefinitions(columnDefinitions);
+
+        labelSampleCount = GetLabel().Text("Sam.:");
+        labelSampleBuffer = GetLabel().Text("Buf.:");
+        labelSampleRecord = GetLabel().Text("Rec.:");
+        labelRawX = GetLabel().Text("X:").TextColor(Colors.Red);
+        labelRawY = GetLabel().Text("Y:").TextColor(Colors.Green);
+        labelRawZ = GetLabel().Text("Z:").TextColor(Colors.Blue);
+
+        _grid.Add(
+            new Label("ACDCs.MagneticTool")
+                    .FontSize(10)
+                    .ColumnSpan(2)
+        );
+
+        VerticalStackLayout controlLayout = new VerticalStackLayout
+        {
+            new HorizontalStackLayout
+            {
+                new Switch()
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .OnToggled(OnOffSwitch_Toggled),
+                new Label(Solid.PowerOff)
+                    .FontSize(20)
+                    .FontFamily("FASolid")
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .VerticalTextAlignment(TextAlignment.Center)
+            }.Margin(new Thickness(0,0,0,5)),
+            new HorizontalStackLayout
+            {
+                new Switch()
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .OnToggled(RecordSwitch_Toggled),
+                new Label(Solid.FloppyDisk)
+                    .FontSize(20)
+                    .FontFamily("FASolid")
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .VerticalTextAlignment(TextAlignment.Center)
+            }.Margin(new Thickness(0,0,0,5)),
+            new VerticalStackLayout
+            {
+                labelSampleCount,
+                labelSampleBuffer,
+                labelSampleRecord,
+                labelRawX,
+                labelRawY,
+                labelRawZ
+            }.Margin(new Thickness(0,0,0,5)),
+            new HorizontalStackLayout
+            {
+                new CheckBox()
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .Color(Colors.Red)
+                    .WidthRequest(20)
+                    .IsChecked(true)
+                    .OnCheckedChanged(DataSeriesX_OnCheckedChanged),
+                new Label("X")
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .TextColor(Colors.Red)
+                    .HorizontalTextAlignment(TextAlignment.Start)
+                    .VerticalTextAlignment(TextAlignment.Center)
+            }.Margin(new Thickness(0,0,0,0)),
+            new HorizontalStackLayout
+            {
+                new CheckBox()
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .Color(Colors.Green)
+                    .WidthRequest(20)
+                    .IsChecked(true)
+                    .OnCheckedChanged(DataSeriesY_OnCheckedChanged),
+                new Label("Y")
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .TextColor(Colors.Green)
+                    .HorizontalTextAlignment(TextAlignment.Start)
+                    .VerticalTextAlignment(TextAlignment.Center)
+            }.Margin(new Thickness(0,0,0,0)),
+            new HorizontalStackLayout
+            {
+                new CheckBox()
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .Color(Colors.Blue)
+                    .WidthRequest(20)
+                    .IsChecked(true)
+                    .OnCheckedChanged(DataSeriesZ_OnCheckedChanged),
+                new Label("X")
+                    .HorizontalOptions(LayoutOptions.Start)
+                    .TextColor(Colors.Blue)
+                    .HorizontalTextAlignment(TextAlignment.Start)
+                    .VerticalTextAlignment(TextAlignment.Center)
+            }.Margin(new Thickness(0,0,0,5)),
+            new VerticalStackLayout
+            {
+                new HorizontalStackLayout
                 {
-                    StrokeThickness = 2,
-                    PathEffect = new DashEffect(new float[] { 3, 3 })
+                    new Picker()
+                        .HorizontalOptions(LayoutOptions.Start)
+                        .OnSelectedIndexChanged(FFTSize_SelectedIndexChanged)
+                        .Items("2048", "1024", "512", "256", "128")
+                        .SelectedIndex(3),
+                    new Label("samples")
+                        .VerticalTextAlignment(TextAlignment.Center)
+                        .HorizontalOptions(LayoutOptions.Start)
                 },
-                MinLimit = -100,
+                new Label("FFT size")
+                        .VerticalTextAlignment(TextAlignment.Center)
+                        .HorizontalOptions(LayoutOptions.Start)
             }
-        };
+        }.Row(1);
+
+        _chart = new CartesianChart();
+        _fft = new CartesianChart();
+
+        _grid.Add(new FlexLayout
+        {
+            _chart,
+            _fft
+        }
+            .RowSpan(2)
+            .Column(1)
+            .Direction(FlexDirection.Row)
+            .Wrap(FlexWrap.Wrap)
+        );
+
+        _grid.Add(new HorizontalStackLayout
+           {
+               new Label("Filter:")
+                   .HorizontalOptions(LayoutOptions.Start)
+                   .VerticalOptions(LayoutOptions.Center),
+               new Picker()
+                   .HorizontalOptions(LayoutOptions.Start)
+                   .Items("None", "Low-pass", "High-pass","Band-pass", "Band-stop")
+                   .OnSelectedIndexChanged(filterPicker_SelectedIndexChanged)
+                   .Margin(new Thickness(0,0, 5, 0)),
+               new Label("From freq. (hz)")
+                   .HorizontalOptions(LayoutOptions.Start)
+                   .VerticalOptions(LayoutOptions.Center),
+               new Entry()
+                   .WidthRequest(50)
+                   .MaxLength(5)
+                   .OnTextChanged(FrequencyEntry_TextChanged),
+               new Label("to freq.(hz)")
+                   .HorizontalOptions(LayoutOptions.Start)
+                   .VerticalOptions(LayoutOptions.Center),
+               new Entry()
+                   .WidthRequest(50)
+                   .MaxLength(5)
+                   .OnTextChanged(frequencyEntryMax_TextChanged)
+           }
+            .Row(2)
+            .ColumnSpan(2)
+        );
+
+        _grid.Add(controlLayout);
+    }
+
+    private CartesianChart _fft;
+
+    private CartesianChart _chart;
+
+    private static Label GetLabel()
+    {
+        return new Label()
+            .FontSize(10)
+            .HorizontalOptions(LayoutOptions.Start)
+            .VerticalOptions(LayoutOptions.Start)
+            .HorizontalTextAlignment(TextAlignment.Start)
+            .VerticalTextAlignment(TextAlignment.End);
     }
 
     private static async Task<ObservableCollection<float>> AddSample(IEnumerable<float> values, float value)
@@ -115,7 +325,7 @@ public partial class MagneticRawPage : ContentPage
         return new LineSeries<FftInfo>
         {
             Values = new ObservableCollection<FftInfo>(),
-            Stroke = new SolidColorPaint(color),
+            Stroke = new SolidColorPaint(color) { StrokeThickness = 3 },
             GeometryFill = null,
             Fill = null,
             GeometryStroke = new SolidColorPaint(color),
@@ -128,7 +338,7 @@ public partial class MagneticRawPage : ContentPage
         return new LineSeries<float>
         {
             Values = new ObservableCollection<float>(),
-            Stroke = new SolidColorPaint(color),
+            Stroke = new SolidColorPaint(color) { StrokeThickness = 3 },
             GeometryStroke = new SolidColorPaint(color),
             Fill = null,
             GeometryFill = null,
@@ -141,45 +351,93 @@ public partial class MagneticRawPage : ContentPage
         point.SecondaryValue = info.Freq;
     }
 
-    private void DataSeries_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
+    private void DataSeriesX_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
     {
-        if (sender == SeriesXCheckBox)
-        {
-            _seriesX.IsVisible = e.Value;
-            _seriesFftX.IsVisible = e.Value;
-        }
-        else if (sender == SeriesYCheckBox)
-        {
-            _seriesY.IsVisible = e.Value;
-            _seriesFftY.IsVisible = e.Value;
-        }
-        else if (sender == SeriesZCheckBox)
-        {
-            _seriesZ.IsVisible = e.Value;
-            _seriesFftZ.IsVisible = e.Value;
-        }
+        _seriesX.IsVisible = e.Value;
+        _seriesFftX.IsVisible = e.Value;
+    }
+
+    private void DataSeriesY_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
+    {
+        _seriesY.IsVisible = e.Value;
+        _seriesFftY.IsVisible = e.Value;
+    }
+
+    private void DataSeriesZ_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
+    {
+        _seriesZ.IsVisible = e.Value;
+        _seriesFftZ.IsVisible = e.Value;
     }
 
     private void FFTSize_SelectedIndexChanged(object sender, EventArgs e)
     {
-        _worker.FftWindowSize = Convert.ToInt32(FftSizePicker.SelectedItem);
+        if (sender is Picker FftSizePicker)
+        {
+            _worker.FftWindowSize = Convert.ToInt32(FftSizePicker.SelectedItem);
+        }
+    }
+
+    private void filterPicker_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        if (sender is not Picker filterPicker) return;
+        FftWorker.Filter = filterPicker.SelectedIndex switch
+        {
+            0 => Filter.None,
+            1 => Filter.LowPass,
+            2 => Filter.HighPass,
+            3 => Filter.BandPass,
+            4 => Filter.BandStop,
+            _ => FftWorker.Filter
+        };
+    }
+
+    private void FrequencyEntry_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is not Entry frequencyEntry) return;
+
+        if (double.TryParse(e.NewTextValue, out var frequency))
+        {
+            _filterFrequency = frequency;
+        }
+        else
+        {
+            frequencyEntry.Text = "";
+        }
+
+        FftWorker.FilterFrequency = _filterFrequency;
+    }
+
+    private void frequencyEntryMax_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is not Entry frequencyEntryMax) return;
+
+        if (double.TryParse(e.NewTextValue, out var frequency))
+        {
+            _filterFrequencyMax = frequency;
+        }
+        else
+        {
+            frequencyEntryMax.Text = "";
+        }
+
+        FftWorker.FilterFrequencyMax = _filterFrequencyMax;
     }
 
     private async void Magnetometer_ReadingChanged(object sender, MagnetometerChangedEventArgs e)
     {
-        await _worker.AddSample(e.Reading.MagneticField);
+        _worker.AddSample(e.Reading.MagneticField);
 
         if (DateTime.Now.Ticks < _lastUpdate.Ticks + 2500000) return;
 
-        await AddSample(_seriesX.Values, e.Reading.MagneticField.X);
-        await AddSample(_seriesY.Values, e.Reading.MagneticField.Y);
-        await AddSample(_seriesZ.Values, e.Reading.MagneticField.Z);
+        Task.WaitAll(AddSample(_seriesX.Values, e.Reading.MagneticField.X), AddSample(_seriesY.Values, e.Reading.MagneticField.Y), AddSample(_seriesZ.Values, e.Reading.MagneticField.Z));
         labelSampleCount.Text = $"Tot:{_worker.SampleCount}";
+
         labelSampleBuffer.Text = $"Buf:{_worker.SampleCacheCount}";
         labelSampleRecord.Text = $"Rec:{_worker.SampleBackupCount}";
         labelRawX.Text = $"X:{e.Reading.MagneticField.X}";
         labelRawY.Text = $"Y:{e.Reading.MagneticField.Y}";
         labelRawZ.Text = $"Z:{e.Reading.MagneticField.Z}";
+
         UpdateFft();
 
         _lastUpdate = DateTime.Now;
@@ -189,6 +447,7 @@ public partial class MagneticRawPage : ContentPage
     {
         if (Magnetometer.Default.IsSupported)
         {
+            FftWorker.IsRunning = e.Value;
             if (e.Value)
             {
                 Magnetometer.Default.ReadingChanged += Magnetometer_ReadingChanged;
@@ -207,10 +466,19 @@ public partial class MagneticRawPage : ContentPage
         _worker.IsRecording = e.Value;
     }
 
-    private async void UpdateFft()
+    private void UpdateFft()
     {
-        await _worker.GetFft(VectorAxis.X, _seriesFftX.Values);
-        await _worker.GetFft(VectorAxis.Y, _seriesFftY.Values);
-        await _worker.GetFft(VectorAxis.Z, _seriesFftZ.Values);
+        FftWorker.GetFftResult(VectorAxis.X, _seriesFftX.Values as ObservableCollection<FftInfo>);
+        FftWorker.GetFftResult(VectorAxis.Y, _seriesFftY.Values as ObservableCollection<FftInfo>);
+        FftWorker.GetFftResult(VectorAxis.Z, _seriesFftZ.Values as ObservableCollection<FftInfo>);
     }
+}
+
+public enum Filter
+{
+    None,
+    LowPass,
+    HighPass,
+    BandPass,
+    BandStop
 }
