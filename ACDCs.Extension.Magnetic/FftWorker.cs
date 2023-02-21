@@ -1,13 +1,12 @@
 ﻿using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
 
 namespace ACDCs.Extension.Magnetic;
 
 public static class FftWorker
 {
-    private static readonly ObservableCollection<FftInfo> _seriesFftX = new();
-    private static readonly ObservableCollection<FftInfo> _seriesFftY = new();
-    private static readonly ObservableCollection<FftInfo> _seriesFftZ = new();
+    private static readonly List<FftInfo> _seriesFftX = new();
+    private static readonly List<FftInfo> _seriesFftY = new();
+    private static readonly List<FftInfo> _seriesFftZ = new();
     private static int _fftWindowSize = 256;
     private static Filter _filter = Filter.None;
     private static double _filterFrequency = 0;
@@ -53,6 +52,8 @@ public static class FftWorker
         }
     }
 
+    public static Action<VectorAxis, List<FftInfo>> OnFftUpdate { get; set; }
+
     public static ConcurrentQueue<MagneticSample> Samples
     {
         get => _samples;
@@ -64,28 +65,6 @@ public static class FftWorker
 
     private static Mutex Mutex { get; set; } = new();
 
-    public static void GetFftResult(VectorAxis axis, ObservableCollection<FftInfo> fftInfos)
-    {
-        Mutex.WaitOne();
-        fftInfos.Clear();
-        switch (axis)
-        {
-            case VectorAxis.X:
-                _seriesFftX.ToList().ForEach(fftInfos.Add);
-                break;
-
-            case VectorAxis.Y:
-                _seriesFftY.ToList().ForEach(fftInfos.Add);
-                break;
-
-            case VectorAxis.Z:
-                _seriesFftZ.ToList().ForEach(fftInfos.Add);
-                break;
-        }
-
-        Mutex.ReleaseMutex();
-    }
-
     private static async void Fft_BackgroundTask()
     {
         while (true)
@@ -95,12 +74,15 @@ public static class FftWorker
             if (IsRunning)
             {
                 await GetFft(VectorAxis.X, _seriesFftX);
+                Task.Run(() => OnFftUpdate.Invoke(VectorAxis.X, _seriesFftX));
                 Thread.Sleep(5);
                 await GetFft(VectorAxis.Y, _seriesFftY);
+                Task.Run(() => OnFftUpdate.Invoke(VectorAxis.Y, _seriesFftY));
                 Thread.Sleep(5);
                 await GetFft(VectorAxis.Z, _seriesFftZ);
+                Task.Run(() => OnFftUpdate.Invoke(VectorAxis.Z, _seriesFftY));
                 Mutex.ReleaseMutex();
-                Thread.Sleep(5);
+                Thread.Sleep(200);
             }
             else
             {
@@ -111,7 +93,7 @@ public static class FftWorker
         // ReSharper disable once FunctionNeverReturns
     }
 
-    private static async Task GetFft(VectorAxis axis, ObservableCollection<FftInfo> values)
+    private static async Task GetFft(VectorAxis axis, List<FftInfo> values)
     {
         double[] signal = await GetLastSamples(axis);
         if (signal.Length < FftWindowSize)

@@ -42,6 +42,7 @@ public class MagneticRawPage : ContentPage
     public MagneticRawPage()
     {
         _worker = new MagneticWorker();
+        FftWorker.OnFftUpdate = OnFftUpdate;
 
         InitializeComponent();
         Content = _grid;
@@ -124,6 +125,36 @@ public class MagneticRawPage : ContentPage
         {
             _axisFftY
         };
+    }
+
+    private void OnFftUpdate(VectorAxis axis, List<FftInfo> list)
+    {
+        switch (axis)
+        {
+            case VectorAxis.X:
+                if (_seriesFftX.Values is ObservableCollection<FftInfo> collectionX)
+                {
+                    collectionX.Clear();
+                    list.ForEach(collectionX.Add);
+                }
+                break;
+
+            case VectorAxis.Y:
+                if (_seriesFftY.Values is ObservableCollection<FftInfo> collectionY)
+                {
+                    collectionY.Clear();
+                    list.ForEach(collectionY.Add);
+                }
+                break;
+
+            case VectorAxis.Z:
+                if (_seriesFftZ.Values is ObservableCollection<FftInfo> collectionZ)
+                {
+                    collectionZ.Clear();
+                    list.ForEach(collectionZ.Add);
+                }
+                break;
+        }
     }
 
     private void InitializeComponent()
@@ -266,6 +297,15 @@ public class MagneticRawPage : ContentPage
             .Wrap(FlexWrap.Wrap)
         );
 
+        _freqToLabel = new Label("to freq.(hz)")
+            .HorizontalOptions(LayoutOptions.Start)
+            .VerticalOptions(LayoutOptions.Center);
+
+        _freqToEntry = new Entry()
+            .WidthRequest(50)
+            .MaxLength(5)
+            .OnTextChanged(frequencyEntryMax_TextChanged);
+
         _grid.Add(new HorizontalStackLayout
            {
                new Label("Filter:")
@@ -274,22 +314,17 @@ public class MagneticRawPage : ContentPage
                new Picker()
                    .HorizontalOptions(LayoutOptions.Start)
                    .Items("None", "Low-pass", "High-pass","Band-pass", "Band-stop")
-                   .OnSelectedIndexChanged(filterPicker_SelectedIndexChanged)
+                   .OnSelectedIndexChanged(FilterPicker_SelectedIndexChanged)
                    .Margin(new Thickness(0,0, 5, 0)),
-               new Label("From freq. (hz)")
+               new Label("From")
                    .HorizontalOptions(LayoutOptions.Start)
                    .VerticalOptions(LayoutOptions.Center),
                new Entry()
                    .WidthRequest(50)
                    .MaxLength(5)
                    .OnTextChanged(FrequencyEntry_TextChanged),
-               new Label("to freq.(hz)")
-                   .HorizontalOptions(LayoutOptions.Start)
-                   .VerticalOptions(LayoutOptions.Center),
-               new Entry()
-                   .WidthRequest(50)
-                   .MaxLength(5)
-                   .OnTextChanged(frequencyEntryMax_TextChanged)
+               _freqToLabel,
+               _freqToEntry
            }
             .Row(2)
             .ColumnSpan(2)
@@ -301,6 +336,8 @@ public class MagneticRawPage : ContentPage
     private CartesianChart _fft;
 
     private CartesianChart _chart;
+    private Label _freqToLabel;
+    private Entry _freqToEntry;
 
     private static Label GetLabel()
     {
@@ -377,18 +414,43 @@ public class MagneticRawPage : ContentPage
         }
     }
 
-    private void filterPicker_SelectedIndexChanged(object sender, EventArgs e)
+    private void FilterPicker_SelectedIndexChanged(object sender, EventArgs e)
     {
         if (sender is not Picker filterPicker) return;
-        FftWorker.Filter = filterPicker.SelectedIndex switch
+        switch (filterPicker.SelectedIndex)
         {
-            0 => Filter.None,
-            1 => Filter.LowPass,
-            2 => Filter.HighPass,
-            3 => Filter.BandPass,
-            4 => Filter.BandStop,
-            _ => FftWorker.Filter
-        };
+            case 0:
+                FftWorker.Filter = Filter.None;
+                break;
+
+            case 1:
+                FftWorker.Filter = Filter.LowPass;
+                _freqToEntry.IsEnabled = false;
+                _freqToLabel.IsEnabled = false;
+                break;
+
+            case 2:
+                FftWorker.Filter = Filter.HighPass;
+                _freqToEntry.IsEnabled = false;
+                _freqToLabel.IsEnabled = false;
+                break;
+
+            case 3:
+                FftWorker.Filter = Filter.BandPass;
+                _freqToEntry.IsEnabled = true;
+                _freqToLabel.IsEnabled = true;
+                break;
+
+            case 4:
+                FftWorker.Filter = Filter.BandStop;
+                _freqToEntry.IsEnabled = true;
+                _freqToLabel.IsEnabled = true;
+                break;
+
+            default:
+                FftWorker.Filter = Filter.None;
+                break;
+        }
     }
 
     private void FrequencyEntry_TextChanged(object sender, TextChangedEventArgs e)
@@ -438,8 +500,6 @@ public class MagneticRawPage : ContentPage
         labelRawY.Text = $"Y:{e.Reading.MagneticField.Y}";
         labelRawZ.Text = $"Z:{e.Reading.MagneticField.Z}";
 
-        UpdateFft();
-
         _lastUpdate = DateTime.Now;
     }
 
@@ -464,13 +524,6 @@ public class MagneticRawPage : ContentPage
     private void RecordSwitch_Toggled(object sender, ToggledEventArgs e)
     {
         _worker.IsRecording = e.Value;
-    }
-
-    private void UpdateFft()
-    {
-        FftWorker.GetFftResult(VectorAxis.X, _seriesFftX.Values as ObservableCollection<FftInfo>);
-        FftWorker.GetFftResult(VectorAxis.Y, _seriesFftY.Values as ObservableCollection<FftInfo>);
-        FftWorker.GetFftResult(VectorAxis.Z, _seriesFftZ.Values as ObservableCollection<FftInfo>);
     }
 }
 
