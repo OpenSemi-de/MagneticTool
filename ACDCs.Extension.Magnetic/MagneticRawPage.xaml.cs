@@ -38,11 +38,14 @@ public class MagneticRawPage : ContentPage
     private Label labelRawX;
     private Label labelRawY;
     private Label labelRawZ;
+    private readonly FftWorker _fftWorker;
+    private readonly Timer _updeTimer;
 
     public MagneticRawPage()
     {
-        _worker = new MagneticWorker();
-        FftWorker.OnFftUpdate = OnFftUpdate;
+        _fftWorker = new FftWorker();
+        _worker = new(_fftWorker);
+        _updeTimer = new Timer(OnUpdateScreen, null, 0, 250);
 
         InitializeComponent();
         Content = _grid;
@@ -91,7 +94,7 @@ public class MagneticRawPage : ContentPage
 
         _fft.Series = new ObservableCollection<ISeries> { _seriesFftX, _seriesFftY, _seriesFftZ };
 
-        _axisFftX = new Axis
+        _axisFftX = new()
         {
             Name = "Frequency (hz)",
             NameTextSize = 30,
@@ -106,7 +109,7 @@ public class MagneticRawPage : ContentPage
             _axisFftX
         };
 
-        _axisFftY = new Axis
+        _axisFftY = new()
         {
             Name = "Power (dbm)",
             NameTextSize = 30,
@@ -127,6 +130,15 @@ public class MagneticRawPage : ContentPage
         };
     }
 
+    private void OnUpdateScreen(object state)
+    {
+        if (!IsRunning) return;
+        if (_fftWorker.OutputQueue.TryDequeue(out FftInfoPacket fftInfos))
+        {
+            OnFftUpdate(fftInfos.Axis, fftInfos);
+        }
+    }
+
     private void OnFftUpdate(VectorAxis axis, List<FftInfo> list)
     {
         switch (axis)
@@ -137,6 +149,7 @@ public class MagneticRawPage : ContentPage
                     collectionX.Clear();
                     list.ForEach(collectionX.Add);
                 }
+
                 break;
 
             case VectorAxis.Y:
@@ -145,6 +158,7 @@ public class MagneticRawPage : ContentPage
                     collectionY.Clear();
                     list.ForEach(collectionY.Add);
                 }
+
                 break;
 
             case VectorAxis.Z:
@@ -153,6 +167,7 @@ public class MagneticRawPage : ContentPage
                     collectionZ.Clear();
                     list.ForEach(collectionZ.Add);
                 }
+
                 break;
         }
     }
@@ -161,15 +176,15 @@ public class MagneticRawPage : ContentPage
     {
         RowDefinitionCollection rowDefinitions = new()
         {
-            new RowDefinition(32),
-            new RowDefinition(),
-            new RowDefinition(40)
+            new(32),
+            new(),
+            new(40)
         };
 
         ColumnDefinitionCollection columnDefinitions = new()
         {
-            new ColumnDefinition(70),
-            new ColumnDefinition()
+            new(70),
+            new()
         };
 
         _grid = new Grid()
@@ -283,8 +298,8 @@ public class MagneticRawPage : ContentPage
             }
         }.Row(1);
 
-        _chart = new CartesianChart();
-        _fft = new CartesianChart();
+        _chart = new();
+        _fft = new();
 
         _grid.Add(new FlexLayout
         {
@@ -359,20 +374,20 @@ public class MagneticRawPage : ContentPage
 
     private static LineSeries<FftInfo> GetFftSeries(SKColor color)
     {
-        return new LineSeries<FftInfo>
+        return new()
         {
             Values = new ObservableCollection<FftInfo>(),
             Stroke = new SolidColorPaint(color) { StrokeThickness = 3 },
             GeometryFill = null,
             Fill = null,
-            GeometryStroke = new SolidColorPaint(color),
-            Mapping = Mapping
+            GeometryStroke = null,
+            Mapping = Mapping,
         };
     }
 
     private static LineSeries<float> GetSeries(SKColor color)
     {
-        return new LineSeries<float>
+        return new()
         {
             Values = new ObservableCollection<float>(),
             Stroke = new SolidColorPaint(color) { StrokeThickness = 3 },
@@ -420,35 +435,35 @@ public class MagneticRawPage : ContentPage
         switch (filterPicker.SelectedIndex)
         {
             case 0:
-                FftWorker.Filter = Filter.None;
+                _fftWorker.Filter = Filter.None;
                 break;
 
             case 1:
-                FftWorker.Filter = Filter.LowPass;
+                _fftWorker.Filter = Filter.LowPass;
                 _freqToEntry.IsEnabled = false;
                 _freqToLabel.IsEnabled = false;
                 break;
 
             case 2:
-                FftWorker.Filter = Filter.HighPass;
+                _fftWorker.Filter = Filter.HighPass;
                 _freqToEntry.IsEnabled = false;
                 _freqToLabel.IsEnabled = false;
                 break;
 
             case 3:
-                FftWorker.Filter = Filter.BandPass;
+                _fftWorker.Filter = Filter.BandPass;
                 _freqToEntry.IsEnabled = true;
                 _freqToLabel.IsEnabled = true;
                 break;
 
             case 4:
-                FftWorker.Filter = Filter.BandStop;
+                _fftWorker.Filter = Filter.BandStop;
                 _freqToEntry.IsEnabled = true;
                 _freqToLabel.IsEnabled = true;
                 break;
 
             default:
-                FftWorker.Filter = Filter.None;
+                _fftWorker.Filter = Filter.None;
                 break;
         }
     }
@@ -466,7 +481,7 @@ public class MagneticRawPage : ContentPage
             frequencyEntry.Text = "";
         }
 
-        FftWorker.FilterFrequency = _filterFrequency;
+        _fftWorker.FilterFrequency = _filterFrequency;
     }
 
     private void frequencyEntryMax_TextChanged(object sender, TextChangedEventArgs e)
@@ -482,7 +497,7 @@ public class MagneticRawPage : ContentPage
             frequencyEntryMax.Text = "";
         }
 
-        FftWorker.FilterFrequencyMax = _filterFrequencyMax;
+        _fftWorker.FilterFrequencyMax = _filterFrequencyMax;
     }
 
     private async void Magnetometer_ReadingChanged(object sender, MagnetometerChangedEventArgs e)
@@ -507,7 +522,8 @@ public class MagneticRawPage : ContentPage
     {
         if (Magnetometer.Default.IsSupported)
         {
-            FftWorker.IsRunning = e.Value;
+            _fftWorker.IsRunning = e.Value;
+            IsRunning = e.Value;
             if (e.Value)
             {
                 Magnetometer.Default.ReadingChanged += Magnetometer_ReadingChanged;
@@ -520,6 +536,8 @@ public class MagneticRawPage : ContentPage
             }
         }
     }
+
+    public bool IsRunning { get; set; }
 
     private void RecordSwitch_Toggled(object sender, ToggledEventArgs e)
     {

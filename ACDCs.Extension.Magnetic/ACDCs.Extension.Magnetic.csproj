@@ -24,7 +24,8 @@
 	<ItemGroup>
 	  <PackageReference Include="FftSharp" Version="1.1.6" />
 	  <PackageReference Include="LiveChartsCore.SkiaSharpView.Maui" Version="2.0.0-beta.701" />
-	  <PackageReference Include="UraniumUI.Icons.FontAwesome" Version="2.3.0" />
+	  <PackageReference Include="Rebus" Version="7.0.0" />
+	  <PackageReference Include="UraniumUI.Icons.FontAwesome" Version="2.3.1" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -41,7 +42,7 @@
 
 	<ItemGroup Condition="'$(TargetFramework)' == 'net7.0-android'">
 	  <PackageReference Include="Sharp.UI">
-	    <Version>0.3.1-alpha.2</Version>
+	    <Version>0.4.1-alpha</Version>
 	  </PackageReference>
 	</ItemGroup>
 

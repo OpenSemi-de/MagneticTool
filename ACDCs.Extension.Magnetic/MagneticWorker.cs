@@ -8,6 +8,7 @@ public class MagneticWorker
     private readonly ConcurrentQueue<MagneticSample> _samples = new();
     private readonly ConcurrentQueue<MagneticSample> _samplesBackup = new();
     private int _fftWindowSize = 256;
+    private FftWorker _fftWorker;
     private bool _isRecording;
 
     public int FftWindowSize
@@ -17,8 +18,14 @@ public class MagneticWorker
         {
             _fftWindowSize = value;
             CleanupWorker.FftWindowSize = value;
-            FftWorker.FftWindowSize = value;
+            _fftWorker.FftWindowSize = value;
         }
+    }
+
+    public FftWorker FftWorker
+    {
+        get => _fftWorker;
+        set => _fftWorker = value;
     }
 
     public bool IsRecording
@@ -35,10 +42,11 @@ public class MagneticWorker
     public int SampleCacheCount => _samples.Count;
     public int SampleCount => _samples.Count + _samplesBackup.Count;
 
-    public MagneticWorker()
+    public MagneticWorker(FftWorker fftWorker)
     {
         CleanupWorker.Samples = _samples;
         CleanupWorker.SamplesBackup = _samplesBackup;
+        FftWorker = fftWorker;
         FftWorker.Samples = _samples;
     }
 

@@ -2,19 +2,19 @@
 
 namespace ACDCs.Extension.Magnetic;
 
-public static class FftWorker
+public class FftWorker
 {
-    private static readonly List<FftInfo> _seriesFftX = new();
-    private static readonly List<FftInfo> _seriesFftY = new();
-    private static readonly List<FftInfo> _seriesFftZ = new();
-    private static int _fftWindowSize = 256;
-    private static Filter _filter = Filter.None;
-    private static double _filterFrequency = 0;
-    private static bool _isRunning = false;
-    private static ConcurrentQueue<MagneticSample> _samples = new();
-    private static Thread _thread = GetThread();
+    /*  private readonly FftInfoPacket _seriesFftX = new(VectorAxis.X);
+      private readonly FftInfoPacket _seriesFftY = new(VectorAxis.Y);
+      private readonly FftInfoPacket _seriesFftZ = new(VectorAxis.Z);*/
+    private int _fftWindowSize = 256;
+    private Filter _filter = Filter.None;
+    private double _filterFrequency = 0;
+    private bool _isRunning = false;
+    private ConcurrentQueue<MagneticSample> _samples = new();
+    private Thread _thread;
 
-    public static int FftWindowSize
+    public int FftWindowSize
     {
         get => _fftWindowSize;
         set
@@ -23,7 +23,7 @@ public static class FftWorker
         }
     }
 
-    public static Filter Filter
+    public Filter Filter
     {
         get => _filter;
         set
@@ -32,7 +32,7 @@ public static class FftWorker
         }
     }
 
-    public static double FilterFrequency
+    public double FilterFrequency
     {
         get => _filterFrequency;
         set
@@ -41,9 +41,9 @@ public static class FftWorker
         }
     }
 
-    public static double FilterFrequencyMax { get; set; }
+    public double FilterFrequencyMax { get; set; }
 
-    public static bool IsRunning
+    public bool IsRunning
     {
         get => _isRunning;
         set
@@ -52,9 +52,10 @@ public static class FftWorker
         }
     }
 
-    public static Action<VectorAxis, List<FftInfo>> OnFftUpdate { get; set; }
+    public Mutex Mutex { get; set; } = new();
+    public ConcurrentQueue<FftInfoPacket> OutputQueue { get; } = new();
 
-    public static ConcurrentQueue<MagneticSample> Samples
+    public ConcurrentQueue<MagneticSample> Samples
     {
         get => _samples;
         set
@@ -63,37 +64,40 @@ public static class FftWorker
         }
     }
 
-    private static Mutex Mutex { get; set; } = new();
+    public FftWorker()
+    {
+        _thread = GetThread();
+    }
 
-    private static async void Fft_BackgroundTask()
+    private void Enqueue(FftInfoPacket seriesFft)
+    {
+        if (seriesFft == null || seriesFft.Count < 1) return;
+        OutputQueue.Enqueue(seriesFft);
+    }
+
+    private async void Fft_BackgroundTask()
     {
         while (true)
         {
-            Mutex.WaitOne();
-
             if (IsRunning)
             {
-                await GetFft(VectorAxis.X, _seriesFftX);
-                Task.Run(() => OnFftUpdate.Invoke(VectorAxis.X, _seriesFftX));
-                Thread.Sleep(5);
-                await GetFft(VectorAxis.Y, _seriesFftY);
-                Task.Run(() => OnFftUpdate.Invoke(VectorAxis.Y, _seriesFftY));
-                Thread.Sleep(5);
-                await GetFft(VectorAxis.Z, _seriesFftZ);
-                Task.Run(() => OnFftUpdate.Invoke(VectorAxis.Z, _seriesFftY));
-                Mutex.ReleaseMutex();
-                Thread.Sleep(200);
+                FftInfoPacket seriesFftX = new(VectorAxis.X);
+                await GetFft(VectorAxis.X, seriesFftX);
+                Enqueue(seriesFftX);
+                FftInfoPacket seriesFftY = new(VectorAxis.Y);
+                await GetFft(VectorAxis.Y, seriesFftY);
+                Enqueue(seriesFftY);
+                FftInfoPacket seriesFftZ = new(VectorAxis.Z);
+                await GetFft(VectorAxis.Z, seriesFftZ);
+                Enqueue(seriesFftZ);
             }
-            else
-            {
-                Mutex.ReleaseMutex();
-                Thread.Sleep(100);
-            }
+            while (OutputQueue.Count > 3)
+                await Task.Delay(200);
         }
         // ReSharper disable once FunctionNeverReturns
     }
 
-    private static async Task GetFft(VectorAxis axis, List<FftInfo> values)
+    private async Task GetFft(VectorAxis axis, FftInfoPacket values)
     {
         double[] signal = await GetLastSamples(axis);
         if (signal.Length < FftWindowSize)
@@ -123,7 +127,6 @@ public static class FftWorker
         const int sampleRate = 100;
         var psd = FftSharp.Transform.FFTpower(signal);
         var freq = FftSharp.Transform.FFTfreq(sampleRate, psd.Length);
-        values.Clear();
         var x = 0;
         foreach (var value in psd)
         {
@@ -135,9 +138,9 @@ public static class FftWorker
         }
     }
 
-    private static async Task<double[]> GetLastSamples(VectorAxis axis, int windowSize = 256)
+    private async Task<double[]> GetLastSamples(VectorAxis axis, int windowSize = 256)
     {
-        var samplesList = _samples.AsParallel()
+        var samplesList = _samples
             .OrderByDescending(sample => sample.Time)
             .Take(FftWindowSize)
             .Select(sampleRecord => sampleRecord.Sample)
@@ -152,7 +155,7 @@ public static class FftWorker
         return await Task.FromResult(samplesList);
     }
 
-    private static Thread GetThread()
+    private Thread GetThread()
     {
         Thread thread = new(Fft_BackgroundTask)
         {
@@ -162,10 +165,20 @@ public static class FftWorker
         return thread;
     }
 
-    private static void UseMutex(Action action)
+    private void UseMutex(Action action)
     {
         Mutex.WaitOne();
         action.Invoke();
         Mutex.ReleaseMutex();
+    }
+}
+
+public class FftInfoPacket : List<FftInfo>
+{
+    public VectorAxis Axis { get; set; }
+
+    public FftInfoPacket(VectorAxis axis)
+    {
+        Axis = axis;
     }
 }
