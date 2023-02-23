@@ -11,35 +11,36 @@ using UraniumUI.Icons.FontAwesome;
 
 namespace ACDCs.Extension.Magnetic;
 
-#pragma warning disable IDE1007
-
 using Sharp.UI;
-
-#pragma warning restore IDE1007
 
 public class MagneticRawPage : ContentPage
 {
     private readonly Axis _axisFftX;
     private readonly Axis _axisFftY;
+    private readonly FftWorker _fftWorker;
     private readonly LineSeries<FftInfo> _seriesFftX;
     private readonly LineSeries<FftInfo> _seriesFftY;
     private readonly LineSeries<FftInfo> _seriesFftZ;
     private readonly LineSeries<float> _seriesX;
     private readonly LineSeries<float> _seriesY;
     private readonly LineSeries<float> _seriesZ;
+    private readonly Timer _updeTimer;
     private readonly MagneticWorker _worker;
+    private CartesianChart _chart;
+    private CartesianChart _fft;
     private double _filterFrequency;
     private double _filterFrequencyMax;
-    private DateTime _lastUpdate = DateTime.Now;
+    private Entry _freqToEntry;
+    private Label _freqToLabel;
     private Grid _grid;
-    private Label labelSampleCount;
-    private Label labelSampleBuffer;
-    private Label labelSampleRecord;
+    private DateTime _lastUpdate = DateTime.Now;
     private Label labelRawX;
     private Label labelRawY;
     private Label labelRawZ;
-    private readonly FftWorker _fftWorker;
-    private readonly Timer _updeTimer;
+    private Label labelSampleBuffer;
+    private Label labelSampleCount;
+    private Label labelSampleRecord;
+    public bool IsRunning { get; set; }
 
     public MagneticRawPage()
     {
@@ -130,46 +131,150 @@ public class MagneticRawPage : ContentPage
         };
     }
 
-    private void OnUpdateScreen(object state)
+    private static async Task<ObservableCollection<float>> AddSample(IEnumerable<float> values, float value)
     {
-        if (!IsRunning) return;
-        if (_fftWorker.OutputQueue.TryDequeue(out FftInfoPacket fftInfos))
+        if (values is not ObservableCollection<float> list) return null;
+        list.Add(value);
+        while (list.Count > 100) list.RemoveAt(0);
+        return await Task.FromResult(list);
+    }
+
+    private static LineSeries<FftInfo> GetFftSeries(SKColor color)
+    {
+        return new()
         {
-            OnFftUpdate(fftInfos.Axis, fftInfos);
+            Values = new ObservableCollection<FftInfo>(),
+            Stroke = new SolidColorPaint(color) { StrokeThickness = 3 },
+            GeometryFill = null,
+            Fill = null,
+            GeometryStroke = null,
+            Mapping = Mapping,
+        };
+    }
+
+    private static Label GetLabel()
+    {
+        return new Label()
+            .FontSize(10)
+            .HorizontalOptions(LayoutOptions.Start)
+            .VerticalOptions(LayoutOptions.Start)
+            .HorizontalTextAlignment(TextAlignment.Start)
+            .VerticalTextAlignment(TextAlignment.End);
+    }
+
+    private static LineSeries<float> GetSeries(SKColor color)
+    {
+        return new()
+        {
+            Values = new ObservableCollection<float>(),
+            Stroke = new SolidColorPaint(color) { StrokeThickness = 3 },
+            GeometryStroke = new SolidColorPaint(color),
+            Fill = null,
+            GeometryFill = null,
+        };
+    }
+
+    private static void Mapping(FftInfo info, ChartPoint point)
+    {
+        point.PrimaryValue = info.Value;
+        point.SecondaryValue = info.Freq;
+    }
+
+    private void DataSeriesX_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
+    {
+        _seriesX.IsVisible = e.Value;
+        _seriesFftX.IsVisible = e.Value;
+    }
+
+    private void DataSeriesY_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
+    {
+        _seriesY.IsVisible = e.Value;
+        _seriesFftY.IsVisible = e.Value;
+    }
+
+    private void DataSeriesZ_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
+    {
+        _seriesZ.IsVisible = e.Value;
+        _seriesFftZ.IsVisible = e.Value;
+    }
+
+    private void FFTSize_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        if (sender is Picker FftSizePicker)
+        {
+            _worker.FftWindowSize = Convert.ToInt32(FftSizePicker.SelectedItem);
         }
     }
 
-    private void OnFftUpdate(VectorAxis axis, List<FftInfo> list)
+    private void FilterPicker_SelectedIndexChanged(object sender, EventArgs e)
     {
-        switch (axis)
+        if (sender is not Picker filterPicker) return;
+        switch (filterPicker.SelectedIndex)
         {
-            case VectorAxis.X:
-                if (_seriesFftX.Values is ObservableCollection<FftInfo> collectionX)
-                {
-                    collectionX.Clear();
-                    list.ForEach(collectionX.Add);
-                }
-
+            case 0:
+                _fftWorker.Filter = Filter.None;
                 break;
 
-            case VectorAxis.Y:
-                if (_seriesFftY.Values is ObservableCollection<FftInfo> collectionY)
-                {
-                    collectionY.Clear();
-                    list.ForEach(collectionY.Add);
-                }
-
+            case 1:
+                _fftWorker.Filter = Filter.LowPass;
+                _freqToEntry.IsEnabled = false;
+                _freqToLabel.IsEnabled = false;
                 break;
 
-            case VectorAxis.Z:
-                if (_seriesFftZ.Values is ObservableCollection<FftInfo> collectionZ)
-                {
-                    collectionZ.Clear();
-                    list.ForEach(collectionZ.Add);
-                }
+            case 2:
+                _fftWorker.Filter = Filter.HighPass;
+                _freqToEntry.IsEnabled = false;
+                _freqToLabel.IsEnabled = false;
+                break;
 
+            case 3:
+                _fftWorker.Filter = Filter.BandPass;
+                _freqToEntry.IsEnabled = true;
+                _freqToLabel.IsEnabled = true;
+                break;
+
+            case 4:
+                _fftWorker.Filter = Filter.BandStop;
+                _freqToEntry.IsEnabled = true;
+                _freqToLabel.IsEnabled = true;
+                break;
+
+            default:
+                _fftWorker.Filter = Filter.None;
                 break;
         }
+    }
+
+    private void FrequencyEntry_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is not Entry frequencyEntry) return;
+
+        if (double.TryParse(e.NewTextValue, out var frequency))
+        {
+            _filterFrequency = frequency;
+        }
+        else
+        {
+            frequencyEntry.Text = "";
+        }
+
+        _fftWorker.FilterFrequency = _filterFrequency;
+    }
+
+    private void frequencyEntryMax_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (sender is not Entry frequencyEntryMax) return;
+
+        if (double.TryParse(e.NewTextValue, out var frequency))
+        {
+            _filterFrequencyMax = frequency;
+        }
+        else
+        {
+            frequencyEntryMax.Text = "";
+        }
+
+        _fftWorker.FilterFrequencyMax = _filterFrequencyMax;
     }
 
     private void InitializeComponent()
@@ -348,158 +453,6 @@ public class MagneticRawPage : ContentPage
         _grid.Add(controlLayout);
     }
 
-    private CartesianChart _fft;
-
-    private CartesianChart _chart;
-    private Label _freqToLabel;
-    private Entry _freqToEntry;
-
-    private static Label GetLabel()
-    {
-        return new Label()
-            .FontSize(10)
-            .HorizontalOptions(LayoutOptions.Start)
-            .VerticalOptions(LayoutOptions.Start)
-            .HorizontalTextAlignment(TextAlignment.Start)
-            .VerticalTextAlignment(TextAlignment.End);
-    }
-
-    private static async Task<ObservableCollection<float>> AddSample(IEnumerable<float> values, float value)
-    {
-        if (values is not ObservableCollection<float> list) return null;
-        list.Add(value);
-        while (list.Count > 100) list.RemoveAt(0);
-        return await Task.FromResult(list);
-    }
-
-    private static LineSeries<FftInfo> GetFftSeries(SKColor color)
-    {
-        return new()
-        {
-            Values = new ObservableCollection<FftInfo>(),
-            Stroke = new SolidColorPaint(color) { StrokeThickness = 3 },
-            GeometryFill = null,
-            Fill = null,
-            GeometryStroke = null,
-            Mapping = Mapping,
-        };
-    }
-
-    private static LineSeries<float> GetSeries(SKColor color)
-    {
-        return new()
-        {
-            Values = new ObservableCollection<float>(),
-            Stroke = new SolidColorPaint(color) { StrokeThickness = 3 },
-            GeometryStroke = new SolidColorPaint(color),
-            Fill = null,
-            GeometryFill = null,
-        };
-    }
-
-    private static void Mapping(FftInfo info, ChartPoint point)
-    {
-        point.PrimaryValue = info.Value;
-        point.SecondaryValue = info.Freq;
-    }
-
-    private void DataSeriesX_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
-    {
-        _seriesX.IsVisible = e.Value;
-        _seriesFftX.IsVisible = e.Value;
-    }
-
-    private void DataSeriesY_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
-    {
-        _seriesY.IsVisible = e.Value;
-        _seriesFftY.IsVisible = e.Value;
-    }
-
-    private void DataSeriesZ_OnCheckedChanged(object sender, CheckedChangedEventArgs e)
-    {
-        _seriesZ.IsVisible = e.Value;
-        _seriesFftZ.IsVisible = e.Value;
-    }
-
-    private void FFTSize_SelectedIndexChanged(object sender, EventArgs e)
-    {
-        if (sender is Picker FftSizePicker)
-        {
-            _worker.FftWindowSize = Convert.ToInt32(FftSizePicker.SelectedItem);
-        }
-    }
-
-    private void FilterPicker_SelectedIndexChanged(object sender, EventArgs e)
-    {
-        if (sender is not Picker filterPicker) return;
-        switch (filterPicker.SelectedIndex)
-        {
-            case 0:
-                _fftWorker.Filter = Filter.None;
-                break;
-
-            case 1:
-                _fftWorker.Filter = Filter.LowPass;
-                _freqToEntry.IsEnabled = false;
-                _freqToLabel.IsEnabled = false;
-                break;
-
-            case 2:
-                _fftWorker.Filter = Filter.HighPass;
-                _freqToEntry.IsEnabled = false;
-                _freqToLabel.IsEnabled = false;
-                break;
-
-            case 3:
-                _fftWorker.Filter = Filter.BandPass;
-                _freqToEntry.IsEnabled = true;
-                _freqToLabel.IsEnabled = true;
-                break;
-
-            case 4:
-                _fftWorker.Filter = Filter.BandStop;
-                _freqToEntry.IsEnabled = true;
-                _freqToLabel.IsEnabled = true;
-                break;
-
-            default:
-                _fftWorker.Filter = Filter.None;
-                break;
-        }
-    }
-
-    private void FrequencyEntry_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (sender is not Entry frequencyEntry) return;
-
-        if (double.TryParse(e.NewTextValue, out var frequency))
-        {
-            _filterFrequency = frequency;
-        }
-        else
-        {
-            frequencyEntry.Text = "";
-        }
-
-        _fftWorker.FilterFrequency = _filterFrequency;
-    }
-
-    private void frequencyEntryMax_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (sender is not Entry frequencyEntryMax) return;
-
-        if (double.TryParse(e.NewTextValue, out var frequency))
-        {
-            _filterFrequencyMax = frequency;
-        }
-        else
-        {
-            frequencyEntryMax.Text = "";
-        }
-
-        _fftWorker.FilterFrequencyMax = _filterFrequencyMax;
-    }
-
     private async void Magnetometer_ReadingChanged(object sender, MagnetometerChangedEventArgs e)
     {
         _worker.AddSample(e.Reading.MagneticField);
@@ -516,6 +469,39 @@ public class MagneticRawPage : ContentPage
         labelRawZ.Text = $"Z:{e.Reading.MagneticField.Z}";
 
         _lastUpdate = DateTime.Now;
+    }
+
+    private void OnFftUpdate(VectorAxis axis, List<FftInfo> list)
+    {
+        switch (axis)
+        {
+            case VectorAxis.X:
+                if (_seriesFftX.Values is ObservableCollection<FftInfo> collectionX)
+                {
+                    collectionX.Clear();
+                    list.ForEach(collectionX.Add);
+                }
+
+                break;
+
+            case VectorAxis.Y:
+                if (_seriesFftY.Values is ObservableCollection<FftInfo> collectionY)
+                {
+                    collectionY.Clear();
+                    list.ForEach(collectionY.Add);
+                }
+
+                break;
+
+            case VectorAxis.Z:
+                if (_seriesFftZ.Values is ObservableCollection<FftInfo> collectionZ)
+                {
+                    collectionZ.Clear();
+                    list.ForEach(collectionZ.Add);
+                }
+
+                break;
+        }
     }
 
     private void OnOffSwitch_Toggled(object sender, ToggledEventArgs e)
@@ -537,19 +523,17 @@ public class MagneticRawPage : ContentPage
         }
     }
 
-    public bool IsRunning { get; set; }
+    private void OnUpdateScreen(object state)
+    {
+        if (!IsRunning) return;
+        if (_fftWorker.OutputQueue.TryDequeue(out FftInfoPacket fftInfos))
+        {
+            OnFftUpdate(fftInfos.Axis, fftInfos);
+        }
+    }
 
     private void RecordSwitch_Toggled(object sender, ToggledEventArgs e)
     {
         _worker.IsRecording = e.Value;
     }
-}
-
-public enum Filter
-{
-    None,
-    LowPass,
-    HighPass,
-    BandPass,
-    BandStop
 }
